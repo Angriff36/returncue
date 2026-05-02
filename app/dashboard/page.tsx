@@ -121,6 +121,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
     <div className="space-y-8">
       {/* Gmail Scanner */}
       <GmailScan />
@@ -239,5 +240,6 @@ export default function DashboardPage() {
     </div>
 
     <SubscriptionsList />
+    </>
   );
 }
