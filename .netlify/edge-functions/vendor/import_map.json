@@ -1,0 +1,11 @@
+{
+  "scopes": {
+    "../": {
+      "https://deno.land/": "./deno.land/",
+      "https://esm.sh/": "./esm.sh/"
+    },
+    "./esm.sh/": {
+      "/v91/next@12.2.5/deno/dist/compiled/cookie.js": "./esm.sh/v91/next@12.2.5/deno/dist/compiled/cookie.js"
+    }
+  }
+}
