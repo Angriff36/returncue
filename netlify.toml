@@ -4,6 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  NEXTAUTH_URL = "https://returncue.netlify.app"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

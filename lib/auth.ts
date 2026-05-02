@@ -54,6 +54,17 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
   },
+  logger: {
+    error(code, ...message) {
+      console.error('[NextAuth Error]', code, JSON.stringify(message));
+    },
+    warn(code, ...message) {
+      console.warn('[NextAuth Warn]', code, JSON.stringify(message));
+    },
+    debug(code, ...message) {
+      console.log('[NextAuth Debug]', code, JSON.stringify(message));
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {

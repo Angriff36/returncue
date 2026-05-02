@@ -172,3 +172,60 @@ export async function fetchPurchaseEmails(
     nextPageToken: listData.nextPageToken,
   };
 }
+
+export async function fetchSubscriptionEmails(
+  accessToken: string,
+  maxResults = 50,
+  pageToken?: string
+): Promise<{ messages: Array<{ id: string; body: string; subject: string; from: string; date: string }>; nextPageToken?: string }> {
+  const params = new URLSearchParams({
+    q: 'subject:(receipt OR invoice OR "your subscription" OR "monthly" OR "billing statement" OR "payment confirmed" OR "auto-pay" OR "automatic payment" OR "has been renewed" OR "renewal confirmation") -subject:(order OR shipping OR delivered OR "thank you for your order" OR "your order")',
+    maxResults: String(maxResults),
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+
+  const listRes = await fetch(`${GMAIL_API}/messages?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!listRes.ok) {
+    const err = await listRes.text();
+    throw new Error(`Gmail API list failed: ${listRes.status} ${err}`);
+  }
+
+  const listData = await listRes.json();
+  const messageIds: Array<{ id: string }> = listData.messages || [];
+
+  if (messageIds.length === 0) {
+    return { messages: [] };
+  }
+
+  const messages: Array<{ id: string; body: string; subject: string; from: string; date: string }> = [];
+
+  for (const { id } of messageIds) {
+    try {
+      const msgRes = await fetch(`${GMAIL_API}/messages/${id}?format=full`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!msgRes.ok) continue;
+
+      const msg: GmailMessage = await msgRes.json();
+      const body = extractEmailBody(msg.payload);
+      const subject = extractHeader(msg.payload.headers, 'Subject');
+      const from = extractHeader(msg.payload.headers, 'From');
+      const date = extractHeader(msg.payload.headers, 'Date');
+
+      if (body.length > 50) {
+        messages.push({ id, body, subject, from, date });
+      }
+    } catch (err) {
+      console.error(`Error fetching message ${id}:`, err);
+    }
+  }
+
+  return {
+    messages,
+    nextPageToken: listData.nextPageToken,
+  };
+}

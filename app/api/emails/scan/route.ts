@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getGoogleAccessToken, fetchPurchaseEmails } from '@/lib/gmail';
+import { getGoogleAccessToken, fetchPurchaseEmails, fetchSubscriptionEmails } from '@/lib/gmail';
 import { parseEmailForPurchase } from '@/lib/parser';
+import { parseEmailForSubscription } from '@/lib/parser';
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,13 +44,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Run scan in background (don't await)
+    // Run purchase scan in background
     runScan(scan.id, accessToken, session.user.id).catch(err => {
-      console.error('Scan failed:', err);
+      console.error('Purchase scan failed:', err);
       prisma.emailScan.update({
         where: { id: scan.id },
         data: { status: 'FAILED', error: String(err).slice(0, 500) },
       }).catch(() => {});
+    });
+
+    // Run subscription scan in parallel
+    runSubscriptionScan(scan.id, accessToken, session.user.id).catch(err => {
+      console.error('Subscription scan failed:', err);
     });
 
     return NextResponse.json({ scanId: scan.id, status: 'STARTED' });
@@ -159,6 +165,83 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
         completedAt: new Date(),
       },
     });
+  }
+}
+
+async function runSubscriptionScan(scanId: string, accessToken: string, userId: string) {
+  let totalProcessed = 0;
+  let subscriptionsFound = 0;
+  let pageToken: string | undefined;
+  let pagesFetched = 0;
+  const MAX_PAGES = 5;
+
+  try {
+    do {
+      const { messages, nextPageToken } = await fetchSubscriptionEmails(
+        accessToken,
+        50,
+        pageToken
+      );
+      pageToken = nextPageToken;
+
+      for (const message of messages) {
+        // Check if already imported
+        const existing = await prisma.subscription.findFirst({
+          where: { sourceEmailId: message.id },
+        });
+        if (existing) {
+          totalProcessed++;
+          continue;
+        }
+
+        // Parse email for subscription
+        const parsed = await parseEmailForSubscription(
+          message.body,
+          message.subject,
+          message.from
+        );
+
+        if (parsed) {
+          try {
+            const lastBilledAt = new Date(parsed.lastBilledAt);
+            let nextBilledAt: Date | undefined;
+            if (parsed.nextBilledAt) {
+              nextBilledAt = new Date(parsed.nextBilledAt);
+            }
+
+            await prisma.subscription.create({
+              data: {
+                userId,
+                serviceName: parsed.serviceName,
+                amount: parsed.amount,
+                currency: parsed.currency,
+                billingFrequency: parsed.billingFrequency,
+                lastBilledAt,
+                nextBilledAt,
+                status: 'active',
+                source: 'gmail_scan',
+                sourceEmailId: message.id,
+              },
+            });
+            subscriptionsFound++;
+          } catch (dbErr) {
+            console.error('Subscription DB insert error:', dbErr);
+          }
+        }
+
+        totalProcessed++;
+
+        if (totalProcessed % 10 === 0) {
+          console.log(`Subscription scan progress: ${totalProcessed} processed, ${subscriptionsFound} found`);
+        }
+      }
+
+      pagesFetched++;
+    } while (pageToken && pagesFetched < MAX_PAGES);
+
+    console.log(`Subscription scan complete: ${totalProcessed} emails, ${subscriptionsFound} subscriptions found`);
+  } catch (err) {
+    console.error('Subscription scan error:', err);
   }
 }
 

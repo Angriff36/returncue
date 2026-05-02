@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { Plus, Package, DollarSign, Clock, TriangleAlert as AlertTriangle, Filter } from 'lucide-react';
+import SubscriptionsList from './SubscriptionsList';
 import { toast } from 'sonner';
 import { PurchaseCard } from './purchase-card';
 import { GmailScan } from './gmail-scan';
@@ -235,5 +237,7 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+
+    <SubscriptionsList />
   );
 }

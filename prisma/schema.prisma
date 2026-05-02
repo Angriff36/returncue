@@ -20,6 +20,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   purchases     Purchase[]
+  subscriptions Subscription[]
   emailScans    EmailScan[]
 }
 
@@ -80,6 +81,29 @@ model Purchase {
   @@unique([sourceEmailId])
   @@index([userId])
   @@index([deadline])
+}
+
+model Subscription {
+  id               String   @id @default(cuid())
+  userId           String
+  serviceName      String
+  amount           Float
+  currency         String   @default("USD")
+  billingFrequency String   @default("unknown")
+  lastBilledAt     DateTime
+  nextBilledAt     DateTime?
+  status           String   @default("active")
+  source           String   @default("gmail_scan")
+  sourceEmailId    String?  @unique
+  priceHistory     Json?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nextBilledAt])
 }
 
 model EmailScan {
