@@ -20,6 +20,7 @@ interface Purchase {
   status: 'KEEP' | 'RETURN_STARTED' | 'RETURNED' | 'REFUNDED';
   notes: string | null;
   returnPortalUrl: string | null;
+  sourceEmailId: string | null;
 }
 
 type FilterStatus = 'ALL' | 'ACTIVE' | 'KEEP' | 'RETURN_STARTED' | 'RETURNED' | 'REFUNDED';

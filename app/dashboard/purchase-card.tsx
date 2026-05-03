@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink, Trash2, ChevronDown } from 'lucide-react';
+import { ExternalLink, Mail, Trash2, ChevronDown } from 'lucide-react';
 
 interface Purchase {
   id: string;
@@ -14,6 +14,7 @@ interface Purchase {
   status: 'KEEP' | 'RETURN_STARTED' | 'RETURNED' | 'REFUNDED';
   notes: string | null;
   returnPortalUrl: string | null;
+  sourceEmailId: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -89,7 +90,9 @@ export function PurchaseCard({
             <span className="w-1 h-1 rounded-full bg-border" />
             <span>${purchase.amount.toFixed(2)}</span>
             <span className="w-1 h-1 rounded-full bg-border" />
-            <span>Due {new Date(purchase.deadline).toLocaleDateString()}</span>
+            {purchase.status !== 'KEEP' && (
+              <span>Due {new Date(purchase.deadline).toLocaleDateString()}</span>
+            )}
           </div>
           {purchase.notes && (
             <p className="text-xs text-muted-foreground mt-2 truncate">{purchase.notes}</p>
@@ -106,6 +109,17 @@ export function PurchaseCard({
               title="Return portal"
             >
               <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+          {purchase.sourceEmailId && (
+            <a
+              href={`https://mail.google.com/mail/u/0/#inbox/${purchase.sourceEmailId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+              title="Open in Gmail"
+            >
+              <Mail className="w-3.5 h-3.5" />
             </a>
           )}
 

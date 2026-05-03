@@ -20,7 +20,10 @@ Return ONLY valid JSON matching this schema, nothing else:
   "returnPortalUrl": "string or null - the return portal URL if mentioned in the email"
 }
 
-Rules:
+CRITICAL RULES:
+- FIRST: Determine if this is an actual PURCHASE RECEIPT or just a promotional/marketing email. If the email is promoting a sale, offering a discount, advertising products, or is a newsletter/news alert, RETURN THE EMPTY OBJECT IMMEDIATELY: {"storeName":"","itemDescription":"","orderDate":"","amount":0,"returnWindowDays":0}. Never extract purchase data from promotional emails.
+- Indicators of a PROMO email (reject these): mentions of "% off", "discount", "promo code", "sale", "deal", "limited time", "just for you", "you've got", "check this out", "new arrivals", "shop now", "order your faves", "hungry again", "sweet savings", "news alert", "announcement", gift cards, free trials
+- Indicators of a REAL purchase (accept these): order numbers (#), invoice numbers, payment confirmation, "thank you for your order", "order confirmed", specific items purchased with quantities and prices, shipping address, payment method charged
 - If the email is a shipping confirmation (not order confirmation), set amount to 0 and returnWindowDays to 0 to signal SKIP
 - If it's a subscription renewal (Netflix, Spotify, SaaS, etc.), set returnWindowDays to 0 to signal SKIP
 - If you can't identify a purchase at all, return {"storeName":"","itemDescription":"","orderDate":"","amount":0,"returnWindowDays":0}

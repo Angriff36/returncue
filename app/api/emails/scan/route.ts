@@ -91,6 +91,24 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
           continue;
         }
 
+        // Pre-filter: skip obvious promo/news emails before calling AI
+        const promoPatterns = [
+          /(?:get|save|up to)\s+\d+%/i,
+          /(?:promo|deal|sale|discount).*(?:just for you|exclusive|limited)/i,
+          /(?:news alert|breaking news|announcement|newsletter)/i,
+          /you'?ve got a promo/i,
+          /(?:don't miss|last chance|ending soon|hurry|act now|final hours)/i,
+          /(?:now available|new arrivals|just dropped|introducing|check this out)/i,
+          /(?:unlock|claim your|upgrade now|shop fresh)/i,
+          /(?:sweet savings|hungry again\?|pre-order the new)/i,
+          /(?:order your faves|get \d+% off|your.*next.*order)/i,
+        ];
+        const isPromo = promoPatterns.some(p => p.test(message.subject));
+        if (isPromo) {
+          totalProcessed++;
+          continue;
+        }
+
         // Parse email with LLM
         const parsed = await parseEmailForPurchase(
           message.body,

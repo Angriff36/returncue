@@ -120,7 +120,7 @@ export async function fetchPurchaseEmails(
   pageToken?: string
 ): Promise<{ messages: Array<{ id: string; body: string; subject: string; from: string; date: string }>; nextPageToken?: string }> {
   const params = new URLSearchParams({
-    q: 'subject:(order OR purchase OR confirmation OR receipt OR "thank you for your")',
+    q: `subject:("order confirmation" OR "your receipt" OR "purchase confirmation" OR "thank you for your order" OR "order received" OR "order #" OR "invoice #" OR "payment received" OR "your order") -subject:(promo OR "get %" OR sale OR deal OR "news alert" OR breaking OR announcement OR "you've got" OR "don't miss")`, 
     maxResults: String(maxResults),
   });
   if (pageToken) params.set('pageToken', pageToken);
