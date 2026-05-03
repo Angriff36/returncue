@@ -11,6 +11,8 @@ interface EmailScan {
   totalEmails: number;
   processedEmails: number;
   purchasesFound: number;
+  skippedEmails: number;
+  currentSubject?: string;
   error?: string;
   startedAt: string;
   completedAt?: string;
@@ -110,7 +112,7 @@ export function GmailScan({ onPurchasesChanged }: GmailScanProps) {
       }
 
       if (data.scanId) {
-        setScan({ id: data.scanId, status: 'RUNNING', totalEmails: 0, processedEmails: 0, purchasesFound: 0, startedAt: new Date().toISOString() });
+        setScan({ id: data.scanId, status: 'RUNNING', totalEmails: 0, processedEmails: 0, purchasesFound: 0, skippedEmails: 0, startedAt: new Date().toISOString() });
       }
     } catch {
       setScanning(false);
@@ -153,26 +155,43 @@ export function GmailScan({ onPurchasesChanged }: GmailScanProps) {
       ) : scan?.status === 'RUNNING' ? (
         // Active scan progress
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-              <span className="text-sm font-medium">Scanning Gmail...</span>
+              <span className="text-sm font-medium">Scanning Gmail</span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {scan.processedEmails} emails processed
-            </span>
           </div>
-          <div className="w-full bg-secondary rounded-full h-2 mb-2">
+          
+          {/* Live activity feed */}
+          {scan.currentSubject && (
+            <div className="mb-3 px-3 py-2 bg-secondary/30 rounded-md border border-border/30">
+              <p className="text-[11px] text-muted-foreground mb-0.5">Currently processing:</p>
+              <p className="text-xs text-foreground truncate font-mono">{scan.currentSubject}</p>
+            </div>
+          )}
+
+          {/* Stat counters */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-secondary/30 rounded-md px-3 py-2 text-center">
+              <p className="text-lg font-semibold text-foreground">{scan.processedEmails}</p>
+              <p className="text-[10px] text-muted-foreground">Scanned</p>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-md px-3 py-2 text-center">
+              <p className="text-lg font-semibold text-green-700 dark:text-green-400">{scan.purchasesFound}</p>
+              <p className="text-[10px] text-green-600 dark:text-green-400">Purchases</p>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2 text-center">
+              <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">{scan.skippedEmails ?? 0}</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">Skipped</p>
+            </div>
+          </div>
+
+          <div className="w-full bg-secondary rounded-full h-2">
             <div
               className="bg-blue-500 h-2 rounded-full transition-all duration-500"
               style={{ width: scan.totalEmails > 0 ? `${progress}%` : '10%' }}
             />
           </div>
-          {scan.purchasesFound > 0 && (
-            <p className="text-xs text-green-600 dark:text-green-400">
-              {scan.purchasesFound} purchases found so far
-            </p>
-          )}
         </div>
       ) : (
         // Idle state — show last scan or prompt

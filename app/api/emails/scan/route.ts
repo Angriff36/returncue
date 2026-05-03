@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
         totalEmails: 0,
         processedEmails: 0,
         purchasesFound: 0,
+        skippedEmails: 0,
       },
     });
 
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
 async function runScan(scanId: string, accessToken: string, userId: string) {
   let totalProcessed = 0;
   let purchasesFound = 0;
+  let skippedCount = 0;
   let pageToken: string | undefined;
   let pagesFetched = 0;
   const MAX_PAGES = 5; // maximum 5 pages * 50 = 250 emails scanned
@@ -106,6 +108,8 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
         const isPromo = promoPatterns.some(p => p.test(message.subject));
         if (isPromo) {
           totalProcessed++;
+          // Track skipped count
+          skippedCount++;
           continue;
         }
 
@@ -145,13 +149,15 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
         totalProcessed++;
 
         // Update progress every 10 emails
-        if (totalProcessed % 10 === 0) {
+        if (totalProcessed % 5 === 0) {
           await prisma.emailScan.update({
             where: { id: scanId },
             data: {
               processedEmails: totalProcessed,
               purchasesFound,
+              skippedEmails: skippedCount,
               totalEmails: totalProcessed,
+              currentSubject: message.subject?.slice(0, 200) || null,
             },
           });
         }
@@ -168,6 +174,7 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
         totalEmails: totalProcessed,
         processedEmails: totalProcessed,
         purchasesFound,
+        skippedEmails: skippedCount,
         completedAt: new Date(),
       },
     });
@@ -180,6 +187,7 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
         error: String(err).slice(0, 500),
         processedEmails: totalProcessed,
         purchasesFound,
+        skippedEmails: skippedCount,
         completedAt: new Date(),
       },
     });

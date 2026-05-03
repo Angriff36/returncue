@@ -1,0 +1,2 @@
+ALTER TABLE "EmailScan" ADD COLUMN "skippedEmails" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "EmailScan" ADD COLUMN "currentSubject" TEXT;
