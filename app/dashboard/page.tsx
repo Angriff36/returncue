@@ -124,7 +124,7 @@ export default function DashboardPage() {
     <>
     <div className="space-y-8">
       {/* Gmail Scanner */}
-      <GmailScan />
+      <GmailScan onPurchasesChanged={fetchPurchases} />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

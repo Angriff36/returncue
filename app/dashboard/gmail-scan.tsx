@@ -16,7 +16,11 @@ interface EmailScan {
   completedAt?: string;
 }
 
-export function GmailScan() {
+interface GmailScanProps {
+  onPurchasesChanged?: () => void | Promise<void>;
+}
+
+export function GmailScan({ onPurchasesChanged }: GmailScanProps) {
   const [scan, setScan] = useState<EmailScan | null>(null);
   const [scanning, setScanning] = useState(false);
   const [lastScan, setLastScan] = useState<EmailScan | null>(null);
@@ -37,14 +41,19 @@ export function GmailScan() {
         if (res.ok) {
           const data = await res.json();
           const updated = data.scan as EmailScan;
+          const hadNewPurchases = updated.purchasesFound > (scan?.purchasesFound ?? 0);
           setScan(updated);
+          if (hadNewPurchases) {
+            void onPurchasesChanged?.();
+          }
           if (updated.status !== 'RUNNING') {
             clearInterval(interval);
             setScanning(false);
+            setLastScan(updated);
+            setScan(null);
             if (updated.status === 'COMPLETED') {
+              await onPurchasesChanged?.();
               toast.success(`Found ${updated.purchasesFound} purchases in ${updated.totalEmails} emails!`);
-              // Refresh the page after a delay to show new purchases
-              setTimeout(() => window.location.reload(), 1500);
             } else if (updated.status === 'FAILED') {
               toast.error(updated.error || 'Scan failed');
             }
@@ -150,7 +159,7 @@ export function GmailScan() {
               <span className="text-sm font-medium">Scanning Gmail...</span>
             </div>
             <span className="text-xs text-muted-foreground">
-              {scan.processedEmails} / {scan.totalEmails || '?'} emails
+              {scan.processedEmails} emails processed
             </span>
           </div>
           <div className="w-full bg-secondary rounded-full h-2 mb-2">
