@@ -1,12 +1,12 @@
 import { NextAuthOptions } from 'next-auth';
-import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as any,
+  // No adapter — we use JWT strategy and handle persistence manually.
+  // Adapters with JWT cause inconsistent behavior in NextAuth v4.
   secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
@@ -67,12 +67,78 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
-    async signIn({ user, account }) {
-      // Always allow sign-in. Account linking is handled by the adapter.
-      if (account) {
-        console.log('[NextAuth signIn] provider:', account.provider, 'type:', account.type);
+    async signIn({ user, account, profile }) {
+      // Handle user creation and account linking manually since we removed the adapter
+      try {
+        if (account?.provider === 'google') {
+          const email = profile?.email || user.email;
+          if (!email) {
+            console.error('[signIn] No email from Google profile');
+            return false;
+          }
+
+          // Find or create user
+          let dbUser = await prisma.user.findUnique({ where: { email } });
+          if (!dbUser) {
+            dbUser = await prisma.user.create({
+              data: {
+                email,
+                name: profile?.name || user.name || email.split('@')[0],
+                image: profile?.image || (profile as any)?.picture || null,
+              },
+            });
+            console.log('[signIn] Created user:', dbUser.id, dbUser.email);
+          } else {
+            // Update name/image if they changed
+            await prisma.user.update({
+              where: { id: dbUser.id },
+              data: {
+                name: profile?.name || dbUser.name,
+                image: profile?.image || (profile as any)?.picture || dbUser.image,
+              },
+            });
+            console.log('[signIn] Existing user:', dbUser.id, dbUser.email);
+          }
+
+          // Upsert account record
+          await prisma.account.upsert({
+            where: {
+              provider_providerAccountId: {
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+              },
+            },
+            create: {
+              userId: dbUser.id,
+              type: account.type,
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+              expires_at: account.expires_at,
+              token_type: account.token_type,
+              scope: account.scope,
+              id_token: account.id_token,
+            },
+            update: {
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+              expires_at: account.expires_at,
+              token_type: account.token_type,
+              scope: account.scope,
+              id_token: account.id_token,
+            },
+          });
+          console.log('[signIn] Account upserted for user:', dbUser.id);
+
+          // Set user.id so JWT callback picks it up
+          user.id = dbUser.id;
+        }
+        return true;
+      } catch (err: any) {
+        console.error('[signIn] Error:', err.message, err.stack);
+        return false;
       }
-      return true;
     },
     async jwt({ token, user, account }) {
       // On first sign-in, store user id
