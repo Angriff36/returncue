@@ -2,10 +2,91 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getGoogleAccessToken, fetchPurchaseEmails, fetchSubscriptionEmails } from '@/lib/gmail';
-import { parseEmailForPurchase, parseEmailForSubscription } from '@/lib/parser';
+import { getGoogleAccessToken, fetchPurchaseEmails } from '@/lib/gmail';
+import { parseEmailForPurchase } from '@/lib/parser';
 
 const MAX_PAGES = 5;
+const BATCH_SIZE = 5; // parallel Gemini calls per batch
+
+const PROMO_PATTERNS = [
+  /(?:get|save|up to)\s+\d+%/i,
+  /\b(?:promo|deal|sale|discount)\b.*\b(?:just for you|exclusive|limited)\b/i,
+  /\b(?:news alert|breaking news|announcement|newsletter)\b/i,
+  /you'?ve got a promo/i,
+  /(?:don't miss|last chance|ending soon|hurry|act now|final hours)/i,
+  /(?:now available|new arrivals|just dropped|introducing|check this out)/i,
+  /(?:unlock|claim your|upgrade now|shop fresh)/i,
+  /(?:sweet savings|hungry again\?|pre-order the new)/i,
+  /(?:order your faves|get \d+% off|your.*next.*order)/i,
+];
+
+function isPromo(subject: string): boolean {
+  return PROMO_PATTERNS.some(p => p.test(subject));
+}
+
+async function processBatch(
+  scanId: string,
+  userId: string,
+  batch: { id: string; subject: string; body: string; from: string }[]
+): Promise<{ found: number; skipped: number }> {
+  let found = 0;
+  let skipped = 0;
+  let processedInBatch = 0;
+
+  for (const email of batch) {
+    // Check already imported
+    const existing = await prisma.purchase.findFirst({
+      where: { sourceEmailId: email.id },
+    });
+    if (existing) {
+      processedInBatch++;
+      continue;
+    }
+
+    // Skip promos
+    if (isPromo(email.subject)) {
+      processedInBatch++;
+      skipped++;
+      continue;
+    }
+
+    // Parse with Gemini
+    const parsed = await parseEmailForPurchase(email.body, email.subject, email.from);
+
+    if (parsed) {
+      try {
+        const orderDate = new Date(parsed.orderDate);
+        const deadline = new Date(orderDate);
+        deadline.setDate(deadline.getDate() + parsed.returnWindowDays);
+
+        await prisma.purchase.create({
+          data: {
+            userId,
+            storeName: parsed.storeName,
+            itemDescription: parsed.itemDescription,
+            orderDate,
+            amount: parsed.amount,
+            returnWindowDays: parsed.returnWindowDays,
+            deadline,
+            status: 'KEEP',
+            source: 'gmail_scan',
+            sourceEmailId: email.id,
+          },
+        });
+        found++;
+      } catch (dbErr) {
+        console.error('DB insert error:', dbErr);
+      }
+    }
+
+    processedInBatch++;
+  }
+
+  // Force Prisma to flush any pending transactions
+  await prisma.$disconnect();
+
+  return { found, skipped };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,204 +127,92 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Run SYNCHRONOUSLY — await everything before returning
-    let totalProcessed = 0;
-    let purchasesFound = 0;
-    let skippedCount = 0;
-    let pageToken: string | undefined;
-    let pagesFetched = 0;
-
-    try {
-      do {
-        const { messages, nextPageToken } = await fetchPurchaseEmails(accessToken, 50, pageToken);
-        pageToken = nextPageToken;
-
-        for (const message of messages) {
-          // Check if already imported
-          const existing = await prisma.purchase.findFirst({
-            where: { sourceEmailId: message.id },
-          });
-          if (existing) {
-            totalProcessed++;
-            continue;
-          }
-
-          // Pre-filter: skip obvious promo/news
-          const promoPatterns = [
-            /(?:get|save|up to)\s+\d+%/i,
-            /\b(?:promo|deal|sale|discount)\b.*\b(?:just for you|exclusive|limited)\b/i,
-            /\b(?:news alert|breaking news|announcement|newsletter)\b/i,
-            /you'?ve got a promo/i,
-            /(?:don't miss|last chance|ending soon|hurry|act now|final hours)/i,
-            /(?:now available|new arrivals|just dropped|introducing|check this out)/i,
-            /(?:unlock|claim your|upgrade now|shop fresh)/i,
-            /(?:sweet savings|hungry again\?|pre-order the new)/i,
-            /(?:order your faves|get \d+% off|your.*next.*order)/i,
-          ];
-          const isPromo = promoPatterns.some(p => p.test(message.subject));
-          if (isPromo) {
-            totalProcessed++;
-            skippedCount++;
-            continue;
-          }
-
-          // Parse email with LLM
-          const parsed = await parseEmailForPurchase(message.body, message.subject, message.from);
-
-          if (parsed) {
-            try {
-              const orderDate = new Date(parsed.orderDate);
-              const deadline = new Date(orderDate);
-              deadline.setDate(deadline.getDate() + parsed.returnWindowDays);
-
-              await prisma.purchase.create({
-                data: {
-                  userId: session.user.id,
-                  storeName: parsed.storeName,
-                  itemDescription: parsed.itemDescription,
-                  orderDate,
-                  amount: parsed.amount,
-                  returnWindowDays: parsed.returnWindowDays,
-                  deadline,
-                  status: 'KEEP',
-                  source: 'gmail_scan',
-                  sourceEmailId: message.id,
-                },
-              });
-              purchasesFound++;
-            } catch (dbErr) {
-              console.error('DB insert error:', dbErr);
-            }
-          }
-
-          totalProcessed++;
-
-          // Update progress every 5 emails
-          if (totalProcessed % 5 === 0) {
-            await prisma.emailScan.update({
-              where: { id: scan.id },
-              data: {
-                processedEmails: totalProcessed,
-                purchasesFound,
-                skippedEmails: skippedCount,
-                totalEmails: totalProcessed,
-                currentSubject: message.subject?.slice(0, 200) || null,
-              },
-            });
-          }
-        }
-
-        pagesFetched++;
-      } while (pageToken && pagesFetched < MAX_PAGES);
-
-      // Final update: COMPLETED
-      await prisma.emailScan.update({
+    // Fire off the scan — returns immediately so the user gets the scanId
+    runScanInBackground(scan.id, session.user.id, accessToken).catch(err => {
+      console.error('Background scan failed:', err);
+      prisma.emailScan.update({
         where: { id: scan.id },
-        data: {
-          status: 'COMPLETED',
-          totalEmails: totalProcessed,
-          processedEmails: totalProcessed,
-          purchasesFound,
-          skippedEmails: skippedCount,
-          completedAt: new Date(),
-        },
-      });
-    } catch (err) {
-      console.error('Scan error:', err);
-      await prisma.emailScan.update({
-        where: { id: scan.id },
-        data: {
-          status: 'FAILED',
-          error: String(err).slice(0, 500),
-          processedEmails: totalProcessed,
-          purchasesFound,
-          skippedEmails: skippedCount,
-          completedAt: new Date(),
-        },
-      });
-    }
-
-    // Run subscription scan in background (non-critical, smaller scope)
-    runSubscriptionScan(scan.id, accessToken, session.user.id).catch(err => {
-      console.error('Subscription scan failed:', err);
+        data: { status: 'FAILED', error: String(err).slice(0, 500), completedAt: new Date() },
+      }).catch(() => {});
     });
 
-    return NextResponse.json({
-      scanId: scan.id,
-      status: 'COMPLETED',
-      totalEmails: totalProcessed,
-      purchasesFound,
-      skippedEmails: skippedCount,
-    });
+    return NextResponse.json({ scanId: scan.id, status: 'STARTED' });
+
   } catch (err) {
     console.error('Scan POST error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
 
-async function runSubscriptionScan(scanId: string, accessToken: string, userId: string) {
+async function runScanInBackground(scanId: string, userId: string, accessToken: string) {
   let totalProcessed = 0;
-  let subscriptionsFound = 0;
+  let totalFound = 0;
+  let totalSkipped = 0;
   let pageToken: string | undefined;
   let pagesFetched = 0;
 
   try {
     do {
-      const { messages, nextPageToken } = await fetchSubscriptionEmails(accessToken, 50, pageToken);
+      const { messages, nextPageToken } = await fetchPurchaseEmails(accessToken, 50, pageToken);
       pageToken = nextPageToken;
 
-      for (const message of messages) {
-        const existing = await prisma.subscription.findFirst({
-          where: { sourceEmailId: message.id },
+      // Process in parallel batches
+      for (let i = 0; i < messages.length; i += BATCH_SIZE) {
+        const batch = messages.slice(i, i + BATCH_SIZE);
+
+        // Update currentSubject for the UI
+        const currentBatchSubject = batch[0]?.subject?.slice(0, 200) || null;
+
+        const { found, skipped } = await processBatch(scanId, userId, batch);
+
+        totalFound += found;
+        totalSkipped += skipped;
+        totalProcessed += batch.length;
+
+        // Update progress after each batch
+        await prisma.emailScan.update({
+          where: { id: scanId },
+          data: {
+            processedEmails: totalProcessed,
+            purchasesFound: totalFound,
+            skippedEmails: totalSkipped,
+            totalEmails: totalProcessed,
+            currentSubject: currentBatchSubject,
+          },
         });
-        if (existing) {
-          totalProcessed++;
-          continue;
-        }
-
-        const parsed = await parseEmailForSubscription(message.body, message.subject, message.from);
-
-        if (parsed) {
-          try {
-            const lastBilledAt = new Date(parsed.lastBilledAt);
-            let nextBilledAt: Date | undefined;
-            if (parsed.nextBilledAt) {
-              nextBilledAt = new Date(parsed.nextBilledAt);
-            }
-
-            await prisma.subscription.create({
-              data: {
-                userId,
-                serviceName: parsed.serviceName,
-                amount: parsed.amount,
-                currency: parsed.currency,
-                billingFrequency: parsed.billingFrequency,
-                lastBilledAt,
-                nextBilledAt,
-                status: 'active',
-                source: 'gmail_scan',
-                sourceEmailId: message.id,
-              },
-            });
-            subscriptionsFound++;
-          } catch (dbErr) {
-            console.error('Subscription DB insert error:', dbErr);
-          }
-        }
-
-        totalProcessed++;
-
-        if (totalProcessed % 10 === 0) {
-          console.log(`Subscription scan progress: ${totalProcessed} processed, ${subscriptionsFound} found`);
-        }
       }
 
       pagesFetched++;
     } while (pageToken && pagesFetched < MAX_PAGES);
 
-    console.log(`Subscription scan complete: ${totalProcessed} emails, ${subscriptionsFound} found`);
+    // Mark complete
+    await prisma.emailScan.update({
+      where: { id: scanId },
+      data: {
+        status: 'COMPLETED',
+        totalEmails: totalProcessed,
+        processedEmails: totalProcessed,
+        purchasesFound: totalFound,
+        skippedEmails: totalSkipped,
+        completedAt: new Date(),
+      },
+    });
+
+    console.log(`Scan ${scanId} complete: ${totalProcessed} emails, ${totalFound} purchases, ${totalSkipped} skipped`);
   } catch (err) {
-    console.error('Subscription scan error:', err);
+    console.error('Scan error:', err);
+    await prisma.emailScan.update({
+      where: { id: scanId },
+      data: {
+        status: 'FAILED',
+        error: String(err).slice(0, 500),
+        totalEmails: totalProcessed,
+        processedEmails: totalProcessed,
+        purchasesFound: totalFound,
+        skippedEmails: totalSkipped,
+        completedAt: new Date(),
+      },
+    }).catch(() => {});
   }
 }
 
