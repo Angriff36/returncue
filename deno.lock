@@ -11,9 +11,9 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@auth/prisma-adapter@^2.11.2",
         "npm:@hookform/resolvers@^3.9.0",
         "npm:@netlify/plugin-nextjs@^4.41.6",
+        "npm:@next-auth/prisma-adapter@^1.0.7",
         "npm:@next/swc-wasm-nodejs@13.5.1",
         "npm:@prisma/client@^5.22.0",
         "npm:@radix-ui/react-accordion@^1.2.0",

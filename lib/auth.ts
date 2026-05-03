@@ -7,6 +7,7 @@ import { prisma } from './prisma';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -66,15 +67,33 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      // Always allow sign-in. Account linking is handled by the adapter.
+      if (account) {
+        console.log('[NextAuth signIn] provider:', account.provider, 'type:', account.type);
+      }
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      // On first sign-in, store user id
       if (user) {
         token.id = user.id;
+      }
+      // On OAuth sign-in, store the provider tokens for Gmail access
+      if (account) {
+        token.provider = account.provider;
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.expiresAt = account.expires_at;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
+        const u = session.user as any;
+        u.id = token.id;
+        u.accessToken = token.accessToken;
+        u.refreshToken = token.refreshToken;
       }
       return session;
     },
