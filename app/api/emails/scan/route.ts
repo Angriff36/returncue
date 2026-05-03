@@ -113,7 +113,7 @@ async function runScan(scanId: string, accessToken: string, userId: string) {
                 amount: parsed.amount,
                 returnWindowDays: parsed.returnWindowDays,
                 deadline,
-                status: 'PENDING',
+                status: 'KEEP',
                 source: 'gmail_scan',
                 sourceEmailId: message.id,
               },

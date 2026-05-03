@@ -17,6 +17,7 @@ interface Purchase {
 }
 
 const STATUS_OPTIONS = [
+  { value: 'PENDING', label: 'Pending', color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300' },
   { value: 'KEEP', label: 'Keep', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
   { value: 'RETURN_STARTED', label: 'Return Started', color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' },
   { value: 'RETURNED', label: 'Returned', color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' },
@@ -71,7 +72,7 @@ export function PurchaseCard({
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const daysLeft = getDaysLeft(purchase.deadline);
-  const currentStatus = STATUS_OPTIONS.find((s) => s.value === purchase.status)!;
+  const currentStatus = STATUS_OPTIONS.find((s) => s.value === purchase.status) ?? STATUS_OPTIONS[0];
 
   return (
     <div className="bg-card border border-border/50 rounded-lg p-5 stripe-shadow-sm hover:stripe-shadow transition-shadow">
