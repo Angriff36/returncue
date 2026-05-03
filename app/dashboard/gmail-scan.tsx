@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Mail, Loader2, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 interface EmailScan {
   id: string;
@@ -121,8 +122,8 @@ export function GmailScan() {
             <Mail className="w-5 h-5 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Connect Gmail to auto-detect purchases from your inbox</p>
           </div>
-          <a
-            href="/api/auth/signin/google"
+          <button
+            onClick={() => signIn('google', { callbackUrl: window.location.href })}
             className="inline-flex items-center gap-2 mt-3 bg-white text-gray-800 px-5 py-2.5 rounded-md text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -132,7 +133,7 @@ export function GmailScan() {
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
             Connect Gmail
-          </a>
+          </button>
         </div>
       ) : scanning && !scan ? (
         // Loading state

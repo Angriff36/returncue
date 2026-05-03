@@ -10,6 +10,7 @@ exports.resolvePages = () => {
         require.resolve('../../../.next/server/app/api/emails/scan/route.js')
         require.resolve('../../../.next/server/app/api/purchases/[id]/route.js')
         require.resolve('../../../.next/server/app/api/purchases/route.js')
+        require.resolve('../../../.next/server/app/api/subscriptions/route.js')
         require.resolve('../../../.next/server/app/auth/signin/page.js')
         require.resolve('../../../.next/server/app/auth/signin/page_client-reference-manifest.js')
         require.resolve('../../../.next/server/app/auth/signup/page.js')

@@ -37,6 +37,7 @@ command = "npx prisma generate && npm run build"
 
 [build.environment]
 NODE_VERSION = "20"
+NEXTAUTH_URL = "https://returncue.netlify.app"
 NEXT_PRIVATE_TARGET = "server"
 
 [build.processing]
@@ -116,7 +117,7 @@ Cookie = ["__prerender_bypass", "__next_preview_data"]
 [redirects.headers]
 
 [[redirects]]
-from = "/_next/data/wUzAAK_gBBgx8uhM3PZQW/_not-found.json"
+from = "/_next/data/BH78L1NyQCfErK2iQqBAb/_not-found.json"
 to = "/.netlify/functions/___netlify-handler"
 status = 200.0
 force = false
