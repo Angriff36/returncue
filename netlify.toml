@@ -6,5 +6,9 @@
   NODE_VERSION = "20"
   NEXTAUTH_URL = "https://returncue.netlify.app"
 
+[functions]
+  "*"
+    node_bundler = "esbuild"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"

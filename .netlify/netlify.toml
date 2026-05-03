@@ -117,7 +117,7 @@ Cookie = ["__prerender_bypass", "__next_preview_data"]
 [redirects.headers]
 
 [[redirects]]
-from = "/_next/data/Z9EiIRm-O8pB4_FzjZdiu/_not-found.json"
+from = "/_next/data/91a8aJlNz2OwH0SamJfj1/_not-found.json"
 to = "/.netlify/functions/___netlify-handler"
 status = 200.0
 force = false
